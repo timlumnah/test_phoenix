@@ -1,0 +1,5 @@
+fastapi>=0.115
+python-multipart>=0.0.9
+uvicorn>=0.30
+pytest>=8.0
+pytest-playwright>=0.5

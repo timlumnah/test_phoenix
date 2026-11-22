@@ -4,7 +4,7 @@
 
 Self-healing end-to-end tests for web apps you did not write.
 
-An agent explores a web app, drafts a Playwright test suite, and runs it in CI. When a selector breaks, the agent patches the test, re-runs to prove the fix, and opens a pull request. A human approves the merge. Passing tests are never touched, and a patch that would weaken an assertion is refused by code, not by a polite prompt.
+An agent explores a web app, drafts a Playwright test suite, and runs it in CI. When a selector breaks, the agent patches the test, re-runs to prove the fix, and writes a pull-request bundle (diff, DOM evidence, re-run logs, a ready `gh pr create` command). A human reviews it and opens the PR. Passing tests are never touched, and a patch that would weaken an assertion is refused by code, not by a polite prompt.
 
 ![test_phoenix demo](docs/demo.gif)
 
@@ -50,7 +50,7 @@ explore -> draft -> run -> classify -> patch -> verify -> PR
 4. **Classify the failure:** selector rot vs. app regression vs. flaky wait. This is the hard part and the entire point. A bot that misclassifies a regression as rot will "fix" the test until a real bug reads green.
 5. **Patch:** locators and wait handling may change. Assertions and test intent may not. A patch that weakens or deletes an assertion is rejected by a diff checker before review, not by a suggestion.
 6. **Verify:** a patch counts only when the previously red test passes three consecutive runs and the rest of the suite stays green.
-7. **PR:** the bot opens a pull request carrying the failure evidence, the DOM it patched against, the diff, and the re-run log. A human merges.
+7. **PR bundle:** the pipeline writes the failure evidence, the DOM it patched against, the diff, the re-run log, and a ready `gh pr create` command to `prs/<name>/`. A human reads it, applies it, and opens the PR. Nothing is applied or published automatically.
 
 ## Guardrails
 
@@ -67,7 +67,7 @@ explore -> draft -> run -> classify -> patch -> verify -> PR
 
 ## Demo target
 
-`demo_app/` ships in this repo: a small FastAPI + HTML storefront whose releases deliberately churn class names, accessible names, and DOM order. That gives the project its proof artifact and its demo. One release renames a button, CI goes red, the bot opens a green patch PR, all on screen in under two minutes.
+`demo_app/` ships in this repo: a small FastAPI + HTML storefront whose releases deliberately churn class names, accessible names, and DOM order. That gives the project its proof artifact and its demo. One release renames a button, the suite goes red, and the patcher writes a verified patch bundle, all on screen in under two minutes (see the recording above).
 
 ## Stack
 
@@ -78,15 +78,14 @@ explore -> draft -> run -> classify -> patch -> verify -> PR
 - Bring-your-own model interface: any OpenAI-compatible API (OpenAI, OpenRouter) or a local model via Ollama, same pattern as open_otto. The rule drafter and CI harness need no account, no key, no hosted service; the model path is opt-in. OpenRouter is the live-verified backend (free route 2026-11-20, paid route 2026-11-21); `:free` routes work even on an unfunded account.
 - pytest
 
-## Roadmap
+## Status and open work
 
-All five shipped; the detail, measurements, and caveats for each are in [docs/HISTORY.md](docs/HISTORY.md#full-roadmap).
+v0.1 through v0.5 are built and verified locally (version-by-version record and measurements: [docs/HISTORY.md](docs/HISTORY.md)). What is not done, stated plainly:
 
-- [x] v0.1: hand-written pytest-playwright suite for the demo app and the CI workflow
-- [x] v0.2: failure classifier (rot / regression / flaky) with labeled fixtures and a selftest that blocks vacuous passing
-- [x] v0.3: locator-patch agent with an AST guard, 3x sandbox verification, and PR bundles
-- [x] v0.4: explorer and drafter: cold-start suite from a bare URL, no-invented-facts gate, optional model path
-- [x] v0.5: breadth proof against a third-party public app, plus an offline key-free mirror in CI
+- **Self-heal is demonstrated on one app.** Classify and patch need releases that churn on demand, which only the bundled `demo_app` provides. The breadth proof against a third-party site covers cold-start drafting and verification, not self-healing.
+- **No PR is opened automatically.** The pipeline writes the bundle and the `gh pr create` command; a human runs it. That is deliberate, and it also means the PR-opening step is untested.
+- **Model drafting is opt-in and less reliable than the rule drafter.** In the funded run, 10 of 11 drafted tests passed the first execution; the one miss was caught by the 3x run gate, not the checker.
+- **One public target.** The live-site proof is a single practice app, run twice.
 
 ## Non-goals
 

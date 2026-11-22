@@ -1,10 +1,24 @@
 # test_phoenix
 
+[![CI](https://github.com/timlumnah/test_phoenix/actions/workflows/ci.yml/badge.svg)](https://github.com/timlumnah/test_phoenix/actions/workflows/ci.yml)
+
 Self-healing end-to-end tests for web apps you did not write.
 
-An agent explores a web app, drafts a Playwright test suite, and runs it in CI. When a selector breaks, the agent patches the test, re-runs to prove the fix, and opens a pull request. A human approves the merge. Passing tests are never touched.
+An agent explores a web app, drafts a Playwright test suite, and runs it in CI. When a selector breaks, the agent patches the test, re-runs to prove the fix, and opens a pull request. A human approves the merge. Passing tests are never touched, and a patch that would weaken an assertion is refused by code, not by a polite prompt.
 
-Status: v0.1 through v0.5 are built locally: demo app with churned releases (v1, v2, and v2reg carrying a planted price bug), the 8-test hand-written suite, GitHub Actions config, the failure classifier with its labeled eval, the patch pipeline (guarded AST patching, three-consecutive-run sandbox verification, PR bundles), the cold-start explorer/drafter: BFS + safe form probes + replayable setup flows produce an observed catalog; drafts (rule-based or model-based) pass a no-invented-facts gate, are rendered by a deterministic code generator, and face the same 3x verification; and the breadth proof: the same loop against a third-party public practice app the project does not own or boot, verified 3x green against the live site. The guard refuses assertion edits, navigation retargets, invisible old values, and skip/xfail additions; quote injection stays contained as an inert string. Nothing is applied to the working tree by any pipeline, and nothing is published: merge is a human command.
+![test_phoenix demo](docs/demo.gif)
+
+The recording above is a real run, no key and no network: a storefront redesign breaks 2 of 8 tests, phoenix classifies five failures (three are rot or copy changes, two are real bugs), patches only the three, verifies three consecutive green runs, and writes a bundle for a human to merge. Nothing is applied to the working tree. Re-record with `docs/record_demo.sh`.
+
+## What it shows
+
+- **It will not paper over bugs.** Two planted regressions (a wrong price, a removed badge) are refused with the reason printed, and no patch is emitted for either.
+- **Patches are guarded in code.** An AST check allows locator-string edits only. Assertion edits, navigation retargets, skip/xfail additions, and injected code are rejected before review.
+- **A fix must prove itself.** A patch counts only after three consecutive green runs of the full suite in a sandbox.
+- **It drafts tests from a bare URL.** The explorer and drafter produce a suite where every claim traces to something observed. The same pipeline ran against a third-party public practice app and came back 3x green.
+- **Honest failure history.** Early model drafts were rejected 12 of 12 by the no-invented-facts gate, and two of those rejections were the harness lying, not the model. That story and the full version record are in [docs/HISTORY.md](docs/HISTORY.md).
+
+Status: v0.1 through v0.5 are built. As of 2026-11-22 the local suite passes (77 passed, 1 skipped opt-in model test). Nothing is published or applied automatically: merge is a human command.
 
 ## Try it
 
@@ -19,17 +33,6 @@ RELEASE=v2 .venv/bin/python -m pytest tests -q   # redesign ships: 2 failed, 6 p
 .venv/bin/python -m phoenix.draft_cli --url https://the-internet.herokuapp.com   # v0.5 breadth: same loop, third-party live site
 .venv/bin/python -m phoenix.draft_cli --model openrouter:<model>  # optional: add the model path (needs key; funded and :free OpenRouter routes both answer)
 ```
-
-The v2 run is the project's thesis in one command: the same suite, unedited, against a markup redesign. Exactly the two class-coupled tests fail (renamed button text, renamed row class). Every label-, role-, and text-based test passes untouched.
-
-The capture run is the v0.2 thesis: five labeled failures, five correct verdicts, printed with the rationale behind each. Two regressions are planted (a wrong price; a removed badge). The classifier refuses both, refuses to emit a candidate patch for either, and the selftest feeds it an unchanged page to prove it does not manufacture rot. The evals catch their own traps: a fixture regex that silently stopped matching (browser HTML re-serializes quotes) produced a rot record mislabeled as regression, and the label mismatch flagged it.
-
-The patcher run is the v0.3 thesis: the three rot/copy failures become a single AST-guarded patch, verified by three consecutive green sandbox runs of the patched suite at v2, and land in prs/<name>/ as a reviewable bundle (diff, DOM evidence, rationale, re-run logs, audit trail, merge commands). The two planted regressions become bug reports and touch no test.
-
-The drafter run is the v0.4 thesis: cold-start from a bare URL, no hand-written knowledge of the app. The explorer finds pages the link graph hides (/checkout is invisible until a cart has an item) and records setup-replayable flows, so every claim in a drafted test traces to something observed. The rule drafter is key-free and the eval reference: a model may only produce steps the rule drafter could have produced from the same observations. Measured history, kept because the failures were the point: a local 9B model's first drafts were rejected 12/12 by the gate (a summed cart total never displayed anywhere, an invented item-list-at-checkout). Two of those rejections turned out to be the HARNESS lying, not the model: inline price text had been recorded glued to product names, and a state-dependent link (Checkout, visible only with a carted item) was never in the page record. Fixed at the source with browser-side leaf-text capture and landing-state folding, each pinned by a regression eval. The next model failure caught was real: a drafted test asserted a hardcoded order reference that changes with run order; the checker let it through and the 3x verification gate failed it, exactly the division of labor: the checker asks "was this ever observed," execution asks "is this actually true every time." After that, a live API model (OpenRouter, free tier) drafted 11 tests that passed the gate AND all three verification runs green; the rule suite stayed green alongside. The model path is opt-in (`--model` / `PHOENIX_LLM=`), via Ollama or any OpenAI-compatible API (OpenAI, OpenRouter) with `response_format: json_object`.
-
-
-The v0.5 run is the breadth thesis: `draft_cli --url` points the exact same pipeline at an app this repo neither wrote, boots, nor churns. the-internet.herokuapp.com answered 12 pages with zero crashes: an HTTP-auth page came back as an empty shell ("Not authorized", no heading, no controls) and got no test, a custom shadow-DOM form became a probe (its <select> seen and left unfilled by the drafter, which cannot render a fill for it), an action page became a flow. The rule draft went gate-clean and 3x GREEN against the live site, twice independently; the funded gpt-4o-mini path drafted one conservative 81-step home test, also 3x GREEN. Breadth, not depth: the classify/patch half of the loop needs churned releases and stays a demo_app demonstration. The whole external path is mirrored offline, key-free, by a local stand-in app carrying the same nasty shapes (evals/test_v05_external.py), so CI proves it without touching a third party.
 
 ## Why this exists
 
@@ -77,11 +80,13 @@ explore -> draft -> run -> classify -> patch -> verify -> PR
 
 ## Roadmap
 
-- [x] v0.1: hand-written pytest-playwright suite for demo_app + GitHub Actions config (suite green on v1 and correctly split on v2, verified locally 2026-11-20; workflow runs on first push)
-- [x] v0.2: failure classifier (rot / regression / flaky) against labeled fixtures (5 live + 7 synthetic scenarios, 5/5 live verdicts and all synthetic green, verified locally 2026-11-20; labels true by construction, selftest blocks vacuous passing)
-- [x] v0.3: locator-patch agent with re-run gate and PR bot (AST guard refuses assertion/goto/skip edits, invisible old values, and code injection; 3-consecutive-run sandbox verification at the failing release; bundles in prs/ with diff, evidence, rationale, logs; pipeline test asserts the live tree is never touched, verified locally 2026-11-20)
-- [x] v0.4: explorer and drafter: cold-start suite from a bare URL (BFS + probes + setup-replayable flows; no-invented-facts gate; deterministic renderer; rule path verified 3x green locally 2026-11-20; live model path verified through OpenRouter 2026-11-20: a free-tier model drafted 11 tests that passed the gate and all three verification runs; getting there caught two real explorer bugs, inline-text gluing and state-hidden links; account state at that date: zero purchased credits, so paid models 402 and only :free routes answer. Post-funding rerun 2026-11-21, paid route openai/gpt-4o-mini: 11 drafted tests, 11/11 gate-clean, 10/11 passed run 1 of execution verification; the failure was a mixed-state claim (empty-cart copy AND a Checkout-link on a bare /cart goto, each individually observed) that the checker's merged per-page records admitted and the 3x run gate rejected; rule suite stayed 7/7 GREEN 3/3)
-- [x] v0.5: breadth proof against a third-party public app (the-internet.herokuapp.com: robots-open Saucelabs practice site, never booted or edited by this repo). Cold-start with no demo_app-specific code in the pipeline: browser-style href resolution, auth-walled pages tolerated (skipped or recorded as an empty shell) not fatal, <select> fields probed but never fill-asserted, flow policy pluggable. Rule draft (3 tests: home, shadow-DOM form reject + accept) gate-clean and 3x GREEN against the live site, twice independently; funded-model path (openai/gpt-4o-mini) drafted 1 gate-clean test (an 81-step home enumeration), also 3x GREEN. Verified 2026-11-21. Offline key-free mirror: evals/test_v05_external.py (17 tests) runs the same path against a local stand-in third-party app. Self-heal (classify/patch) stays demo_app-only: it needs releases to churn, which a third-party site does not offer on command
+All five shipped; the detail, measurements, and caveats for each are in [docs/HISTORY.md](docs/HISTORY.md#full-roadmap).
+
+- [x] v0.1: hand-written pytest-playwright suite for the demo app and the CI workflow
+- [x] v0.2: failure classifier (rot / regression / flaky) with labeled fixtures and a selftest that blocks vacuous passing
+- [x] v0.3: locator-patch agent with an AST guard, 3x sandbox verification, and PR bundles
+- [x] v0.4: explorer and drafter: cold-start suite from a bare URL, no-invented-facts gate, optional model path
+- [x] v0.5: breadth proof against a third-party public app, plus an offline key-free mirror in CI
 
 ## Non-goals
 
@@ -93,4 +98,4 @@ explore -> draft -> run -> classify -> patch -> verify -> PR
 
 ## License
 
-AGPL-3.0 (planned). Free to use, modify, and self-host. Anyone who runs a modified version as a service publishes their changes.
+AGPL-3.0, see `LICENSE`. Free to use, modify, and self-host. Anyone who runs a modified version as a service publishes their changes.
